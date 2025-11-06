@@ -1,24 +1,22 @@
 import streamlit as st
 import requests
 from datetime import datetime
-from textblob import TextBlob  # For simple sentiment analysis
 
 # -------------------------------
 # Streamlit App Configuration
 # -------------------------------
 st.set_page_config(
-    page_title="Financial News App",
+    page_title="Financial News Dashboard",
     page_icon="💹",
     layout="wide"
 )
 
-st.title("💹 Financial News & IPO Tracker")
-st.write("Get the latest financial news, stock updates, IPO information, and more!")
+st.title("💹 Financial News & IPO Dashboard")
+st.write("Get the latest financial news, stock updates, IPO info, and more!")
 
 # -------------------------------
 # Load API Key from Streamlit Secrets
 # -------------------------------
-# Add to Streamlit Secrets: NEWS_API_KEY="your_real_newsapi_key"
 API_KEY = st.secrets.get("NEWS_API_KEY")
 
 if not API_KEY:
@@ -42,16 +40,14 @@ category = st.sidebar.selectbox(
     index=0
 )
 
-keyword = st.sidebar.text_input("🔍 Search Keyword (e.g., stock, IPO, crypto)")
+keyword = st.sidebar.text_input("🔍 Keyword (optional, e.g., stock, IPO, crypto)")
 
-source = st.sidebar.text_input("News Source (optional, e.g., cnn, bloomberg)")
+source = st.sidebar.text_input("News Source (optional, e.g., bloomberg, cnbc)")
 
 num_articles = st.sidebar.slider("📰 Number of Articles", 1, 20, 5)
 
 from_date = st.sidebar.date_input("From Date", datetime.today())
 to_date = st.sidebar.date_input("To Date", datetime.today())
-
-sentiment_analysis = st.sidebar.checkbox("🔎 Show Sentiment Analysis", value=True)
 
 # -------------------------------
 # Function to fetch news
@@ -78,7 +74,7 @@ def fetch_news():
         return []
 
 # -------------------------------
-# Button to fetch news
+# Display News
 # -------------------------------
 if st.button("Get Financial News"):
     st.info(f"Fetching {category.title()} news for {country.upper()}...")
@@ -92,23 +88,4 @@ if st.button("Get Financial News"):
             st.markdown(f"### {idx}. [{article['title']}]({article['url']})")
 
             if article.get("urlToImage"):
-                st.image(article["urlToImage"], use_container_width=True)
-
-            with st.expander("Read More"):
-                st.write(article.get("description", "No description available"))
-                st.write(article.get("content", "No additional content"))
-
-            if sentiment_analysis:
-                text = article.get("title", "")
-                blob = TextBlob(text)
-                polarity = blob.sentiment.polarity
-                if polarity > 0:
-                    sentiment = "Positive 🙂"
-                elif polarity < 0:
-                    sentiment = "Negative 🙁"
-                else:
-                    sentiment = "Neutral 😐"
-                st.caption(f"Sentiment: {sentiment}")
-
-            st.caption(f"Source: {article.get('source', {}).get('name', 'Unknown')} | Published: {article.get('publishedAt', 'N/A')}")
-            st.write("---")
+                st.image(article["urlToImage"], use_container_width=T
