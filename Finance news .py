@@ -87,5 +87,38 @@ if st.button("Get Financial News"):
         for idx, article in enumerate(articles, start=1):
             st.markdown(f"### {idx}. [{article['title']}]({article['url']})")
 
+            # Display image if available
             if article.get("urlToImage"):
-                st.image(article["urlToImage"], use_container_width=T
+                st.image(article["urlToImage"], use_container_width=True)
+
+            with st.expander("Read More"):
+                st.write(article.get("description", "No description available"))
+                st.write(article.get("content", "No additional content"))
+
+            st.caption(f"Source: {article.get('source', {}).get('name', 'Unknown')} | Published: {article.get('publishedAt', 'N/A')}")
+            st.write("---")
+
+# -------------------------------
+# Optional: Show Top Stock & IPO News
+# -------------------------------
+st.sidebar.header("Stocks & IPOs")
+show_stocks = st.sidebar.checkbox("Show Top Stock & IPO News")
+
+if show_stocks:
+    stock_keywords = ["stock", "IPO", "market", "finance"]
+    st.subheader("📈 Top Stock & IPO News")
+    for kw in stock_keywords:
+        url = f"https://newsapi.org/v2/everything?q={kw}&sortBy=publishedAt&pageSize=3&apiKey={API_KEY}"
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+            articles = data.get("articles", [])
+            for article in articles:
+                st.markdown(f"### [{article['title']}]({article['url']})")
+                if article.get("description"):
+                    st.write(article["description"])
+                st.caption(f"Source: {article.get('source', {}).get('name', 'Unknown')} | Published: {article.get('publishedAt', 'N/A')}")
+                st.write("---")
+        except:
+            continue
