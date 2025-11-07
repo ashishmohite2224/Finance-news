@@ -18,7 +18,7 @@ st.write("Get the latest financial news, stock updates, IPO info, and more!")
 # ✅ Use Your API Key Here
 # -------------------------------
 # ⚠️ Replace the value below with your real NewsAPI key
-API_KEY = "your_real_newsapi_key_here"
+API_KEY = "123abc456def789ghi"
 
 if API_KEY == "your_real_newsapi_key_here" or not API_KEY.strip():
     st.error("⚠️ Missing valid API key. Please update the API_KEY variable in the code.")
