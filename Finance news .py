@@ -20,19 +20,34 @@ st.set_page_config(
 # ==============================
 st.markdown("""
     <style>
-        /* Background */
+        /* Main background */
         [data-testid="stAppViewContainer"] {
-            background: linear-gradient(135deg, #041427 0%, #0a2f5b 100%);
+            background: linear-gradient(135deg, #031a35 0%, #07305b 100%);
             color: #EAF6F4;
         }
+
+        /* Sidebar styling */
         [data-testid="stSidebar"] {
             background: linear-gradient(180deg, #061b33 0%, #082c54 100%);
             color: #EAF6F4;
         }
+
+        /* Header text color fix */
         h1, h2, h3, h4 {
-            color: #58d1f5;
+            color: #5cc9ff !important;
             font-weight: 700;
         }
+
+        /* Metric styling */
+        [data-testid="stMetricValue"] {
+            color: #5cc9ff !important;
+            font-weight: 800;
+        }
+        [data-testid="stMetricLabel"] {
+            color: #cce7ff !important;
+        }
+
+        /* Buttons */
         .stButton>button {
             background-color: #58d1f5 !important;
             color: #041427 !important;
@@ -42,17 +57,31 @@ st.markdown("""
         }
         .stButton>button:hover {
             background-color: #89e0ff !important;
-            transform: scale(1.03);
+            transform: scale(1.05);
         }
+
+        /* Card style */
         .card {
-            background: rgba(255,255,255,0.04);
+            background: rgba(255,255,255,0.07);
             border-radius: 12px;
             padding: 18px;
             margin-bottom: 16px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.4);
         }
-        [data-testid="stMetricValue"] { color: #58d1f5; font-weight: 700; }
-        [data-testid="stMetricLabel"] { color: #EAF6F4; }
+
+        /* Scrollable news box */
+        .scroll-box {
+            max-height: 320px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+        .scroll-box::-webkit-scrollbar {
+            width: 6px;
+        }
+        .scroll-box::-webkit-scrollbar-thumb {
+            background-color: #58d1f5;
+            border-radius: 3px;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -65,14 +94,13 @@ st.write("Live Market Overview • Stock Analysis • Top Movers • Business Ne
 # ==============================
 # NewsAPI Key
 # ==============================
-API_KEY = "a9b91dc9740c491ab00c7b79d40486e4"  # your API key
+API_KEY = "a9b91dc9740c491ab00c7b79d40486e4"
 
 # ==============================
-# Cached Data Fetchers
+# Data Fetch Functions
 # ==============================
 @st.cache_data(ttl=1800)
 def fetch_nse_data():
-    """Fetch sample NSE stock data."""
     url = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20500"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
@@ -87,10 +115,7 @@ def fetch_nse_data():
         return pd.DataFrame()
 
 @st.cache_data(ttl=300)
-def fetch_news(category="business", num_articles=6):
-    """Fetch Indian business news from NewsAPI"""
-    if not API_KEY:
-        return []
+def fetch_news(category="business", num_articles=8):
     url = f"https://newsapi.org/v2/top-headlines?country=in&category={category}&apiKey={API_KEY}&pageSize={num_articles}"
     try:
         res = requests.get(url, timeout=10)
@@ -100,7 +125,6 @@ def fetch_news(category="business", num_articles=6):
         return []
 
 def get_stock_data(symbol, period="1mo"):
-    """Get stock data using yfinance"""
     try:
         df = yf.Ticker(symbol).history(period=period)
         return df
@@ -108,7 +132,6 @@ def get_stock_data(symbol, period="1mo"):
         return pd.DataFrame()
 
 def sentiment_label(text):
-    """Simple sentiment analysis"""
     score = TextBlob(text).sentiment.polarity
     if score > 0.1:
         return "🟢 Positive"
@@ -134,10 +157,10 @@ page = st.sidebar.radio(
 )
 
 # ==============================
-# Dashboard
+# Dashboard Page
 # ==============================
 if page == "🏠 Dashboard":
-    st.header("Market Overview")
+    st.header("📊 Indian Market Overview")
 
     col1, col2, col3 = st.columns([1.2, 1.2, 1.6])
 
@@ -170,14 +193,19 @@ if page == "🏠 Dashboard":
             st.warning("SENSEX data unavailable.")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # News snapshot
+    # Latest News Scrollable
     with col3:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.subheader("📰 Latest Business Headlines")
-        news = fetch_news("business", 5)
+        news = fetch_news("business", 10)
         if news:
+            st.markdown('<div class="scroll-box">', unsafe_allow_html=True)
             for n in news:
-                st.markdown(f"- **{n.get('title','No title')}**")
+                title = n.get("title", "")
+                source = n.get("source", {}).get("name", "")
+                st.markdown(f"• **{title}**  \n🗞️ {source}")
+                st.markdown("---")
+            st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.info("No latest news found.")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -192,8 +220,9 @@ if page == "🏠 Dashboard":
         st.info("NSE data currently unavailable.")
 
 # ==============================
-# Stock Search
+# Other Pages stay the same
 # ==============================
+
 elif page == "🔎 Stock Search":
     st.header("🔍 Stock Search & Chart")
     symbol = st.text_input("Enter NSE symbol (e.g., RELIANCE.NS, TCS.NS)", "RELIANCE.NS")
@@ -210,9 +239,6 @@ elif page == "🔎 Stock Search":
             st.line_chart(data["Close"], height=350)
             st.dataframe(data.tail(), use_container_width=True)
 
-# ==============================
-# Top Movers
-# ==============================
 elif page == "🚀 Top Movers":
     st.header("🚀 Top Gainers & Losers (NSE)")
     df = fetch_nse_data()
@@ -231,9 +257,6 @@ elif page == "🚀 Top Movers":
             st.subheader("📉 Top Losers")
             st.dataframe(losers.reset_index(drop=True), use_container_width=True)
 
-# ==============================
-# Latest News
-# ==============================
 elif page == "📰 Latest News":
     st.header("📰 Latest Business News")
     num = st.slider("Number of Articles", 3, 12, 6)
@@ -249,9 +272,6 @@ elif page == "📰 Latest News":
             st.write(art.get("description", ""))
             st.write("---")
 
-# ==============================
-# Sentiment
-# ==============================
 elif page == "💬 Sentiment":
     st.header("💬 Business News Sentiment")
     if st.button("Analyze"):
@@ -264,23 +284,16 @@ elif page == "💬 Sentiment":
                 sentiment = sentiment_label(title)
                 st.markdown(f"- {sentiment}: {title}")
 
-# ==============================
-# About
-# ==============================
 else:
     st.header("ℹ️ About")
     st.markdown("""
     ### Indian Market Dashboard  
     **Features:**  
-    - Live NIFTY / SENSEX performance with charts  
-    - Stock Search with growth %  
-    - Top Gainers & Losers  
-    - Latest Indian Business News  
-    - Sentiment Analysis (AI-based)  
-    - Professional blue-dark theme  
+    - Live NIFTY / SENSEX charts  
+    - Stock search & growth tracking  
+    - Top gainers/losers  
+    - Business news with sentiment analysis  
+    - Professional blue-dark interface  
 
-    **Notes:**  
-    - Some NSE APIs may block direct access.  
-    - Use `.NS` or `.BO` suffix for yfinance (e.g., RELIANCE.NS).  
-    - NewsAPI may have daily request limits for free keys.
+    *Powered by Streamlit · Data from Yahoo Finance & NewsAPI*
     """)
