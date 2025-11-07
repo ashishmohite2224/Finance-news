@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # -------------------------------
 # Streamlit App Configuration
@@ -15,12 +15,12 @@ st.title("💹 Financial News & IPO Dashboard")
 st.write("Get the latest financial news, stock updates, IPO info, and more!")
 
 # -------------------------------
-# Load API Key from Streamlit Secrets
+# Load API Key
 # -------------------------------
-API_KEY = st.secrets.get("NEWS_API_KEY")
+API_KEY = st.secrets.get("NEWS_API_KEY", None)
 
 if not API_KEY:
-    st.error("⚠️ Missing API key! Add your NEWS_API_KEY in Streamlit Secrets.")
+    st.error("⚠️ Missing API key! Please add your NEWS_API_KEY in Streamlit Secrets.")
     st.stop()
 
 # -------------------------------
@@ -28,11 +28,7 @@ if not API_KEY:
 # -------------------------------
 st.sidebar.header("Filters")
 
-country = st.sidebar.selectbox(
-    "🌍 Country",
-    ["us", "gb", "in", "ca", "au"],
-    index=0
-)
+country = st.sidebar.selectbox("🌍 Country", ["us", "gb", "in", "ca", "au"], index=0)
 
 category = st.sidebar.selectbox(
     "🗂️ Category",
@@ -46,79 +42,26 @@ source = st.sidebar.text_input("News Source (optional, e.g., bloomberg, cnbc)")
 
 num_articles = st.sidebar.slider("📰 Number of Articles", 1, 20, 5)
 
-from_date = st.sidebar.date_input("From Date", datetime.today())
 to_date = st.sidebar.date_input("To Date", datetime.today())
+from_date = st.sidebar.date_input("From Date", datetime.today() - timedelta(days=7))
 
 # -------------------------------
-# Function to fetch news
+# Function to Fetch News
 # -------------------------------
-def fetch_news():
-    url = f"https://newsapi.org/v2/top-headlines?country={country}&category={category}&pageSize={num_articles}&apiKey={API_KEY}"
+@st.cache_data(ttl=600)
+def fetch_news(category, country, keyword, source, num_articles, from_date, to_date):
+    # Choose endpoint
+    endpoint = "top-headlines" if not (keyword or from_date or to_date) else "everything"
+    base_url = f"https://newsapi.org/v2/{endpoint}"
 
-    if keyword:
-        url += f"&q={keyword}"
+    params = {
+        "apiKey": API_KEY,
+        "pageSize": num_articles,
+        "sortBy": "publishedAt"
+    }
+
     if source:
-        url += f"&sources={source}"
-    if from_date:
-        url += f"&from={from_date}"
-    if to_date:
-        url += f"&to={to_date}"
-
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("articles", [])
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error fetching news: {e}")
-        return []
-
-# -------------------------------
-# Display News
-# -------------------------------
-if st.button("Get Financial News"):
-    st.info(f"Fetching {category.title()} news for {country.upper()}...")
-
-    articles = fetch_news()
-
-    if not articles:
-        st.warning("No articles found. Try different filters.")
-    else:
-        for idx, article in enumerate(articles, start=1):
-            st.markdown(f"### {idx}. [{article['title']}]({article['url']})")
-
-            # Display image if available
-            if article.get("urlToImage"):
-                st.image(article["urlToImage"], use_container_width=True)
-
-            with st.expander("Read More"):
-                st.write(article.get("description", "No description available"))
-                st.write(article.get("content", "No additional content"))
-
-            st.caption(f"Source: {article.get('source', {}).get('name', 'Unknown')} | Published: {article.get('publishedAt', 'N/A')}")
-            st.write("---")
-
-# -------------------------------
-# Optional: Show Top Stock & IPO News
-# -------------------------------
-st.sidebar.header("Stocks & IPOs")
-show_stocks = st.sidebar.checkbox("Show Top Stock & IPO News")
-
-if show_stocks:
-    stock_keywords = ["stock", "IPO", "market", "finance"]
-    st.subheader("📈 Top Stock & IPO News")
-    for kw in stock_keywords:
-        url = f"https://newsapi.org/v2/everything?q={kw}&sortBy=publishedAt&pageSize=3&apiKey={API_KEY}"
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-            data = response.json()
-            articles = data.get("articles", [])
-            for article in articles:
-                st.markdown(f"### [{article['title']}]({article['url']})")
-                if article.get("description"):
-                    st.write(article["description"])
-                st.caption(f"Source: {article.get('source', {}).get('name', 'Unknown')} | Published: {article.get('publishedAt', 'N/A')}")
-                st.write("---")
-        except:
-            continue
+        params["sources"] = source
+    elif endpoint == "top-headlines":
+        params["country"] = country
+        params["categ]()
