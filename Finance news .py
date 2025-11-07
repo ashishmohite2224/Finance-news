@@ -6,39 +6,43 @@ from textblob import TextBlob
 from datetime import datetime
 
 # ------------------------------------------
-# 🎯 Streamlit App Configuration
+# 🎯 Streamlit App Setup
 # ------------------------------------------
-st.set_page_config(page_title="Indian Financial Market Dashboard", page_icon="🇮🇳", layout="wide")
+st.set_page_config(
+    page_title="Indian Market Dashboard",
+    page_icon="📈",
+    layout="wide",
+)
 
-st.title("🇮🇳 Indian Financial Market Dashboard")
-st.caption("Real-time Financial Insights • Stock Data • FII/DII Flow • Market Sentiment")
+st.title("📊 Indian Stock Market Dashboard")
+st.caption("Live Market Updates • Indian Stocks • Financial News • Sentiment Insights")
 
 # ------------------------------------------
-# 🔐 API Key for NewsAPI
+# 🔑 API Keys
 # ------------------------------------------
 API_KEY = "a9b91dc9740c491ab00c7b79d40486e4"
 
 # ------------------------------------------
-# 🧭 Sidebar Navigation
+# 📂 Sidebar Menu
 # ------------------------------------------
 menu = st.sidebar.radio(
-    "📂 Select Section",
+    "📁 Select Section",
     [
         "Market Overview",
-        "Indian Financial News",
+        "Top Gainers & Losers",
         "Stock Price Tracker",
-        "Market Movers",
-        "FII/DII Data",
-        "News Sentiment",
-        "About App"
+        "Market News",
+        "Sentiment Analysis",
+        "About"
     ]
 )
 
 # ------------------------------------------
-# 🧮 Helper Functions
+# 🧩 Helper Functions
 # ------------------------------------------
 
 def fetch_news(category="business", num_articles=10):
+    """Fetch latest financial news for India."""
     url = f"https://newsapi.org/v2/top-headlines?country=in&category={category}&apiKey={API_KEY}&pageSize={num_articles}"
     try:
         res = requests.get(url)
@@ -48,16 +52,18 @@ def fetch_news(category="business", num_articles=10):
         st.error(f"Error fetching news: {e}")
         return []
 
-def get_stock_data(symbol):
+def get_stock_data(symbol, period="5d"):
+    """Fetch stock data from Yahoo Finance."""
     try:
         stock = yf.Ticker(symbol)
-        data = stock.history(period="5d")
+        data = stock.history(period=period)
         return data
     except Exception as e:
         st.error(f"Error fetching stock data for {symbol}: {e}")
         return pd.DataFrame()
 
 def get_sentiment(text):
+    """Get sentiment from a news headline."""
     blob = TextBlob(text)
     polarity = blob.sentiment.polarity
     if polarity > 0:
@@ -68,10 +74,10 @@ def get_sentiment(text):
         return "⚪ Neutral"
 
 # ------------------------------------------
-# 🟢 1. Market Overview (Nifty + Sensex)
+# 1️⃣ Market Overview
 # ------------------------------------------
 if menu == "Market Overview":
-    st.header("📊 Market Overview: NIFTY 50 & SENSEX")
+    st.header("📈 Market Overview: NIFTY 50 & SENSEX")
 
     indices = {
         "NIFTY 50": "^NSEI",
@@ -87,19 +93,77 @@ if menu == "Market Overview":
                 prev_close = data["Close"].iloc[-2]
                 change = ((last_close - prev_close) / prev_close) * 100
                 st.metric(label=name, value=f"₹{last_close:,.2f}", delta=f"{change:.2f}%")
-                st.line_chart(data["Close"])
+                st.line_chart(data["Close"], height=200)
             else:
                 st.warning(f"No data found for {name}")
 
 # ------------------------------------------
-# 📰 2. Indian Financial News
+# 2️⃣ Top Gainers & Losers (NSE Stocks)
 # ------------------------------------------
-elif menu == "Indian Financial News":
-    st.header("📰 Latest Indian Financial & Stock Market News")
-    num_articles = st.sidebar.slider("📰 Number of Articles", 3, 15, 6)
-    category = st.sidebar.selectbox("📂 Category", ["business", "technology", "general"], index=0)
+elif menu == "Top Gainers & Losers":
+    st.header("📊 Market Movers: Top Gainers & Losers")
 
-    if st.button("Get Latest News"):
+    stocks = [
+        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ITC.NS", 
+        "SBIN.NS", "ICICIBANK.NS", "LT.NS", "AXISBANK.NS", "BHARTIARTL.NS"
+    ]
+
+    data_list = []
+    for symbol in stocks:
+        data = get_stock_data(symbol, "2d")
+        if len(data) >= 2:
+            change = ((data["Close"].iloc[-1] - data["Close"].iloc[-2]) / data["Close"].iloc[-2]) * 100
+            data_list.append({
+                "Stock": symbol.replace(".NS", ""),
+                "Last Price (₹)": round(data["Close"].iloc[-1], 2),
+                "Change (%)": round(change, 2)
+            })
+
+    df = pd.DataFrame(data_list)
+    if not df.empty:
+        df_gainers = df.sort_values(by="Change (%)", ascending=False).head(5)
+        df_losers = df.sort_values(by="Change (%)", ascending=True).head(5)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("🏆 Top Gainers")
+            st.dataframe(df_gainers, use_container_width=True)
+
+        with col2:
+            st.subheader("📉 Top Losers")
+            st.dataframe(df_losers, use_container_width=True)
+    else:
+        st.warning("No stock data available right now.")
+
+# ------------------------------------------
+# 3️⃣ Stock Price Tracker
+# ------------------------------------------
+elif menu == "Stock Price Tracker":
+    st.header("💹 Stock Price Tracker")
+    st.write("Enter NSE stock symbol (e.g., RELIANCE.NS, TCS.NS, HDFCBANK.NS)")
+
+    symbol = st.text_input("Enter Stock Symbol", "RELIANCE.NS")
+
+    if st.button("Get Stock Data"):
+        data = get_stock_data(symbol, "1mo")
+        if not data.empty:
+            st.subheader(f"Stock Performance: {symbol}")
+            st.line_chart(data["Close"])
+            st.metric("Last Close", f"₹{data['Close'].iloc[-1]:,.2f}")
+            st.write(f"**High:** ₹{data['High'].iloc[-1]:,.2f} | **Low:** ₹{data['Low'].iloc[-1]:,.2f}")
+            st.write(f"**Volume:** {data['Volume'].iloc[-1]:,}")
+        else:
+            st.warning("No stock data found. Try another symbol.")
+
+# ------------------------------------------
+# 4️⃣ Market News
+# ------------------------------------------
+elif menu == "Market News":
+    st.header("📰 Latest Indian Financial & Market News")
+    num_articles = st.sidebar.slider("🗞️ Number of Articles", 3, 15, 6)
+    category = st.sidebar.selectbox("📂 Category", ["business", "general", "technology"], index=0)
+
+    if st.button("Show Latest News"):
         articles = fetch_news(category, num_articles)
         if not articles:
             st.warning("No articles found.")
@@ -109,114 +173,44 @@ elif menu == "Indian Financial News":
                 if article.get("urlToImage"):
                     st.image(article["urlToImage"], use_container_width=True)
                 st.caption(f"Source: {article.get('source', {}).get('name', 'Unknown')} | Published: {article.get('publishedAt', 'N/A')}")
+                st.write(article.get("description", ""))
                 st.write("---")
 
 # ------------------------------------------
-# 💹 3. Stock Price Tracker
+# 5️⃣ Sentiment Analysis
 # ------------------------------------------
-elif menu == "Stock Price Tracker":
-    st.header("💹 Indian Stock Price Tracker")
-    st.write("Enter NSE stock symbol (e.g., RELIANCE.NS, TCS.NS, INFY.NS, HDFCBANK.NS)")
-    symbol = st.text_input("Enter Stock Symbol", "RELIANCE.NS")
+elif menu == "Sentiment Analysis":
+    st.header("💬 News Sentiment: Indian Market Headlines")
 
-    if st.button("Get Stock Data"):
-        data = get_stock_data(symbol)
-        if not data.empty:
-            st.subheader(f"📈 Stock Performance: {symbol}")
-            st.line_chart(data["Close"])
-            st.metric("Last Close Price", f"₹{data['Close'].iloc[-1]:,.2f}")
-            st.write(f"**High:** ₹{data['High'].iloc[-1]:,.2f} | **Low:** ₹{data['Low'].iloc[-1]:,.2f}")
-            st.write(f"**Volume:** {data['Volume'].iloc[-1]:,}")
-        else:
-            st.warning("No data found. Try another symbol.")
-
-# ------------------------------------------
-# 📈 4. Market Movers (Top Gainers / Losers)
-# ------------------------------------------
-elif menu == "Market Movers":
-    st.header("📈 Market Movers: Top Gainers / Losers (Sample NSE Stocks)")
-
-    stocks = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ITC.NS", "SBIN.NS", "ICICIBANK.NS"]
-    data_list = []
-
-    for symbol in stocks:
-        data = get_stock_data(symbol)
-        if len(data) >= 2:
-            change = ((data["Close"].iloc[-1] - data["Close"].iloc[-2]) / data["Close"].iloc[-2]) * 100
-            data_list.append({
-                "Stock": symbol,
-                "Last Price (₹)": round(data["Close"].iloc[-1], 2),
-                "Change (%)": round(change, 2)
-            })
-
-    df = pd.DataFrame(data_list)
-    df_gainers = df.sort_values(by="Change (%)", ascending=False)
-    df_losers = df.sort_values(by="Change (%)", ascending=True)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Top Gainers")
-        st.dataframe(df_gainers.head(5), use_container_width=True)
-
-    with col2:
-        st.subheader("Top Losers")
-        st.dataframe(df_losers.head(5), use_container_width=True)
-
-# ------------------------------------------
-# 💰 5. FII/DII Data (Mock API)
-# ------------------------------------------
-elif menu == "FII/DII Data":
-    st.header("💰 FII/DII Investment Data")
-
-    try:
-        # Using mock data (since NSE official API is restricted)
-        fii_data = {
-            "Date": ["2025-11-06", "2025-11-05", "2025-11-04"],
-            "FII (₹ Cr)": [1450.25, -980.60, 1220.35],
-            "DII (₹ Cr)": [-520.45, 880.15, -300.25]
-        }
-        df_fii = pd.DataFrame(fii_data)
-        st.dataframe(df_fii, use_container_width=True)
-
-        st.bar_chart(df_fii.set_index("Date")[["FII (₹ Cr)", "DII (₹ Cr)"]])
-        st.info("📝 Note: FII/DII data shown is a demo representation for app design.")
-    except Exception as e:
-        st.error(f"Error fetching FII/DII data: {e}")
-
-# ------------------------------------------
-# 💬 6. News Sentiment
-# ------------------------------------------
-elif menu == "News Sentiment":
-    st.header("💬 Sentiment Analysis of Indian Financial Headlines")
-
-    if st.button("Analyze Latest Headlines"):
+    if st.button("Analyze Latest Business Headlines"):
         articles = fetch_news("business", 5)
         if not articles:
-            st.warning("No news found.")
+            st.warning("No headlines found.")
         else:
             for art in articles:
                 title = art.get("title", "No Title")
                 sentiment = get_sentiment(title)
-                st.markdown(f"### [{title}]({art.get('url', '#')})")
+                st.markdown(f"#### [{title}]({art.get('url', '#')})")
                 st.write(f"Sentiment: {sentiment}")
                 st.write("---")
 
 # ------------------------------------------
-# ℹ️ 7. About App
+# 6️⃣ About
 # ------------------------------------------
-elif menu == "About App":
-    st.header("📘 About This App")
+elif menu == "About":
+    st.header("ℹ️ About This Dashboard")
     st.markdown("""
-    This dashboard is built to help **Indian investors, traders, and students** analyze market trends easily.
+    **📘 Indian Market Dashboard**  
+    Built using Python & Streamlit to give real-time Indian stock market insights.
 
     **Features:**
-    - Live Indian financial news 📰  
-    - Real-time stock tracker 💹  
-    - Nifty & Sensex overview 📊  
-    - FII/DII inflow-outflow data 💰  
-    - Sentiment analysis of news 💬  
+    - NIFTY & SENSEX Overview 📈  
+    - Top Gainers / Losers 📊  
+    - Stock Price Tracker 💹  
+    - Market News 📰  
+    - Sentiment Analysis 💬  
 
-    **Tech Used:** Streamlit, Yahoo Finance API, NewsAPI, TextBlob, Pandas
+    **Tech Used:** Streamlit • Yahoo Finance • NewsAPI • TextBlob • Pandas  
     """)
 
     st.success("💡 Developed by: Your Name (Finance Student @ BSE Institute)")
