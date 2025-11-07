@@ -17,10 +17,10 @@ st.write("Get the latest financial news, stock updates, IPO info, and more!")
 # -------------------------------
 # ✅ Use Your API Key Here
 # -------------------------------
-# ⚠️ Replace the value below with your real NewsAPI key
-API_KEY = "123abc456def789ghi"
+# 🔑 Replace below with your actual NewsAPI key
+API_KEY = "123abc456def789ghi"  # <-- PUT YOUR REAL KEY HERE
 
-if API_KEY == "your_real_newsapi_key_here" or not API_KEY.strip():
+if not API_KEY or API_KEY == "your_real_newsapi_key_here":
     st.error("⚠️ Missing valid API key. Please update the API_KEY variable in the code.")
     st.stop()
 
@@ -29,18 +29,15 @@ if API_KEY == "your_real_newsapi_key_here" or not API_KEY.strip():
 # -------------------------------
 st.sidebar.header("Filters")
 
-country = st.sidebar.selectbox("🌍 Country", ["us", "gb", "in", "ca", "au"], index=0)
-
+country = st.sidebar.selectbox("🌍 Country", ["us", "gb", "in", "ca", "au"], index=2)
 category = st.sidebar.selectbox(
     "🗂️ Category",
     ["business", "general", "technology", "entertainment", "health", "science", "sports"],
     index=0
 )
-
 keyword = st.sidebar.text_input("🔍 Keyword (optional, e.g., stock, IPO, crypto)")
 source = st.sidebar.text_input("📰 News Source (optional, e.g., bloomberg, cnbc)")
 num_articles = st.sidebar.slider("📰 Number of Articles", 1, 20, 5)
-
 to_date = st.sidebar.date_input("To Date", datetime.today())
 from_date = st.sidebar.date_input("From Date", datetime.today() - timedelta(days=7))
 
@@ -72,7 +69,7 @@ def fetch_news(category, country, keyword, source, num_articles, from_date, to_d
     try:
         response = requests.get(base_url, params=params)
         if response.status_code == 401:
-            st.error("❌ Unauthorized: Invalid API key. Please check the one in the script.")
+            st.error("❌ Unauthorized: Invalid API key. Please check your API key.")
             return []
         response.raise_for_status()
         return response.json().get("articles", [])
@@ -85,7 +82,6 @@ def fetch_news(category, country, keyword, source, num_articles, from_date, to_d
 # -------------------------------
 if st.button("Get Financial News"):
     st.info(f"Fetching {category.title()} news for {country.upper()}...")
-
     articles = fetch_news(category, country, keyword, source, num_articles, from_date, to_date)
 
     if not articles:
