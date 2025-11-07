@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import os
 from datetime import datetime, timedelta
 
 # -------------------------------
@@ -15,12 +16,28 @@ st.title("💹 Financial News & IPO Dashboard")
 st.write("Get the latest financial news, stock updates, IPO info, and more!")
 
 # -------------------------------
-# Load API Key
+# Load API Key (Flexible Handling)
 # -------------------------------
-API_KEY = st.secrets.get("NEWS_API_KEY", None)
+API_KEY = None
+
+# 1️⃣ Try to get from Streamlit Secrets
+if "NEWS_API_KEY" in st.secrets:
+    API_KEY = st.secrets["NEWS_API_KEY"]
+
+# 2️⃣ Try from Environment Variable
+elif os.getenv("NEWS_API_KEY"):
+    API_KEY = os.getenv("NEWS_API_KEY")
+
+# 3️⃣ Ask user to input manually
+else:
+    API_KEY = st.text_input(
+        "🔑 Enter your NewsAPI Key",
+        type="password",
+        help="Get a free API key from https://newsapi.org"
+    )
 
 if not API_KEY:
-    st.error("⚠️ Missing API key! Please add your NEWS_API_KEY in Streamlit Secrets.")
+    st.warning("⚠️ Please provide a valid API key to continue.")
     st.stop()
 
 # -------------------------------
@@ -48,8 +65,8 @@ from_date = st.sidebar.date_input("From Date", datetime.today() - timedelta(days
 # Function to Fetch News
 # -------------------------------
 @st.cache_data(ttl=600)
-def fetch_news(category, country, keyword, source, num_articles, from_date, to_date):
-    # Determine endpoint based on filters
+def fetch_news(category, country, keyword, source, num_articles, from_date, to_date, API_KEY):
+    # Choose endpoint dynamically
     endpoint = "top-headlines" if not (keyword or from_date or to_date) else "everything"
     base_url = f"https://newsapi.org/v2/{endpoint}"
 
@@ -59,14 +76,13 @@ def fetch_news(category, country, keyword, source, num_articles, from_date, to_d
         "sortBy": "publishedAt"
     }
 
-    # Add source or country/category (can't use both)
+    # Add either country/category or source (not both)
     if source:
         params["sources"] = source
     elif endpoint == "top-headlines":
         params["country"] = country
         params["category"] = category
 
-    # Add optional filters
     if keyword:
         params["q"] = keyword
 
@@ -89,7 +105,7 @@ def fetch_news(category, country, keyword, source, num_articles, from_date, to_d
 if st.button("Get Financial News"):
     st.info(f"Fetching {category.title()} news for {country.upper()}...")
 
-    articles = fetch_news(category, country, keyword, source, num_articles, from_date, to_date)
+    articles = fetch_news(category, country, keyword, source, num_articles, from_date, to_date, API_KEY)
 
     if not articles:
         st.warning("No articles found. Try different filters.")
@@ -125,7 +141,7 @@ if show_stocks:
 
     for kw in stock_keywords:
         st.write(f"### 🔎 {kw.title()} News")
-        articles = fetch_news("business", country, kw, None, 3, from_date, to_date)
+        articles = fetch_news("business", country, kw, None, 3, from_date, to_date, API_KEY)
 
         for article in articles:
             st.markdown(f"#### [{article.get('title', 'No Title')}]({article.get('url', '#')})")
