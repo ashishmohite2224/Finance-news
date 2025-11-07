@@ -101,10 +101,8 @@ def fetch_bse_data():
         res.raise_for_status()
         data = res.json().get("Table", [])
         df = pd.DataFrame(data)
-        if not df.empty:
-            # Normalize column names
-            if "Security_Name" in df.columns and "Scrip_Code" in df.columns:
-                return df[["Security_Name", "Scrip_Code"]]
+        if not df.empty and "Security_Name" in df.columns and "Scrip_Code" in df.columns:
+            return df[["Security_Name", "Scrip_Code"]]
         return pd.DataFrame()
     except Exception:
         return pd.DataFrame()
@@ -157,8 +155,166 @@ page = st.sidebar.radio(
 # ==============================
 if page == "Dashboard":
     st.header("Market Overview")
-    col1, col2 = st.columns(2)
+    cols = st.columns(2)
 
     indices = {"NIFTY 50": "^NSEI", "SENSEX": "^BSESN"}
     for i, (label, symbol) in enumerate(indices.items()):
-        with (col
+        with cols[i]:
+            st.markdown(f"#### {label}")
+            df = get_stock_data(symbol, period="1mo")
+            if not df.empty and "Close" in df.columns and len(df["Close"]) >= 2:
+                start = df["Close"].iloc[0]
+                end = df["Close"].iloc[-1]
+                growth = ((end - start) / start) * 100
+                st.metric(label="Value", value=f"₹{end:,.2f}", delta=f"{growth:.2f}%")
+                st.line_chart(df["Close"], height=220)
+            else:
+                st.warning(f"No data available for {label}")
+
+    st.markdown("---")
+    st.subheader("NSE Snapshot (sample)")
+    nse_df = fetch_nse_data()
+    if not nse_df.empty:
+        display_df = nse_df.copy()
+        if "lastPrice" in display_df.columns:
+            display_df["lastPrice"] = pd.to_numeric(display_df["lastPrice"], errors="coerce").round(2)
+        if "pChange" in display_df.columns:
+            display_df["pChange"] = pd.to_numeric(display_df["pChange"], errors="coerce").round(2)
+        st.dataframe(display_df.head(30), use_container_width=True)
+    else:
+        st.info("NSE sample data not available right now (NSE site may block direct requests).")
+
+# ==============================
+# Page: Stock Search
+# ==============================
+elif page == "Stock Search":
+    st.header("Stock Search (NSE & BSE)")
+
+    nse_df = fetch_nse_data()
+    bse_df = fetch_bse_data()
+
+    stock_options = []
+    if not nse_df.empty and "symbol" in nse_df.columns:
+        stock_options += nse_df["symbol"].astype(str).tolist()
+    if not bse_df.empty and "Security_Name" in bse_df.columns:
+        stock_options += bse_df["Security_Name"].astype(str).tolist()
+
+    if not stock_options:
+        st.warning("Stock lists could not be loaded. You can still enter an NSE symbol manually (e.g., RELIANCE.NS).")
+        manual_symbol = st.text_input("Enter NSE symbol manually", "RELIANCE.NS")
+        symbol_to_show = manual_symbol.strip()
+    else:
+        symbol_choice = st.selectbox("Choose stock (or type manually)", sorted(set(stock_options)))
+        manual_symbol = st.text_input("Or enter symbol manually (NSE format like RELIANCE.NS)", "")
+        if manual_symbol.strip():
+            symbol_to_show = manual_symbol.strip()
+        else:
+            # If the selected symbol looks like an NSE symbol (uppercase), append .NS for yfinance
+            if symbol_choice.isupper():
+                symbol_to_show = symbol_choice + ".NS"
+            else:
+                symbol_to_show = symbol_choice
+
+    period = st.selectbox("Timeframe", ["5d", "1mo", "3mo", "6mo", "1y"], index=1)
+
+    if st.button("Show"):
+        df = get_stock_data(symbol_to_show, period=period)
+        if not df.empty and "Close" in df.columns:
+            start = df["Close"].iloc[0]
+            end = df["Close"].iloc[-1]
+            growth = ((end - start) / start) * 100
+            st.metric(label=f"{symbol_to_show} (Close)", value=f"₹{end:,.2f}", delta=f"{growth:.2f}%")
+            st.line_chart(df["Close"], height=300)
+            st.write("Latest stats:")
+            last_row = df.iloc[-1]
+            st.write({
+                "Open": f"₹{last_row['Open']:,.2f}",
+                "High": f"₹{last_row['High']:,.2f}",
+                "Low": f"₹{last_row['Low']:,.2f}",
+                "Volume": f"{int(last_row['Volume']):,}"
+            })
+        else:
+            st.error("Price data not available for this symbol. Try another symbol or manual input like RELIANCE.NS")
+
+# ==============================
+# Page: Top Movers
+# ==============================
+elif page == "Top Movers":
+    st.header("Top Gainers & Losers (NSE sample)")
+    nse_df = fetch_nse_data()
+    if not nse_df.empty and "pChange" in nse_df.columns:
+        df = nse_df.copy()
+        df["pChange"] = pd.to_numeric(df["pChange"], errors="coerce")
+        gainers = df.sort_values("pChange", ascending=False).head(10)
+        losers = df.sort_values("pChange", ascending=True).head(10)
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.subheader("Top Gainers")
+            st.dataframe(gainers.reset_index(drop=True), use_container_width=True)
+        with c2:
+            st.subheader("Top Losers")
+            st.dataframe(losers.reset_index(drop=True), use_container_width=True)
+    else:
+        st.info("Top movers data not available right now. Try again later.")
+
+# ==============================
+# Page: Latest News
+# ==============================
+elif page == "Latest News":
+    st.header("Latest Business & Market News (India)")
+    num = st.slider("Number of articles", 3, 12, 6)
+    if st.button("Load News"):
+        articles = fetch_news("business", num)
+        if not articles:
+            st.info("No news available or NewsAPI limit reached.")
+        else:
+            for i, art in enumerate(articles, start=1):
+                title = art.get("title", "No title")
+                url = art.get("url", "#")
+                img = art.get("urlToImage")
+                source = art.get("source", {}).get("name", "Unknown")
+                date = art.get("publishedAt", "")[:19].replace("T", " ")
+                description = art.get("description", "")
+                st.markdown(f"### {i}. [{title}]({url})")
+                if img:
+                    st.image(img, use_container_width=True)
+                st.caption(f"{source} | {date}")
+                st.write(description)
+                st.write("---")
+
+# ==============================
+# Page: Sentiment
+# ==============================
+elif page == "Sentiment":
+    st.header("Sentiment Analysis for Latest Headlines")
+    if st.button("Analyze"):
+        articles = fetch_news("business", 8)
+        if not articles:
+            st.info("No headlines available to analyze.")
+        else:
+            for art in articles:
+                title = art.get("title", "")
+                url = art.get("url", "#")
+                label = analyze_sentiment(title)
+                st.markdown(f"- [{title}]({url})  → **{label}**")
+
+# ==============================
+# Page: About
+# ==============================
+else:
+    st.header("About")
+    st.markdown(
+        """
+        **Indian Stock Market Dashboard**  
+        - Dark professional UI with blue accent  
+        - NSE & BSE sample lists (NSE: NIFTY 500 sample)  
+        - Stock search with line chart and growth % by timeframe  
+        - Top gainers & losers, latest news and headline sentiment  
+
+        ⚠️ Notes:
+        - NSE may block direct requests; if NSE endpoints fail, use manual symbol input (e.g. RELIANCE.NS) for prices.
+        - NewsAPI may have rate limits; ensure your API key is active.
+        """
+    )
+    st.success("Ready — run analysis and explore stocks!")
