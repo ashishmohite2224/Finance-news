@@ -117,6 +117,16 @@ def fetch_bse_data():
     except Exception:
         return pd.DataFrame()
 
-
 @st.cache_data(ttl=300)
-def f
+def fetch_news(category="business", num_articles=6):
+    """Fetch news from NewsAPI (India)"""
+    if not API_KEY:
+        return []
+    url = f"https://newsapi.org/v2/top-headlines?country=in&category={category}&apiKey={API_KEY}&pageSize={num_articles}"
+    try:
+        res = requests.get(url, timeout=8)
+        res.raise_for_status()
+        return res.json().get("articles", [])
+    except Exception:
+        return []
+
