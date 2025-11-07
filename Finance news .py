@@ -37,8 +37,7 @@ category = st.sidebar.selectbox(
 )
 
 keyword = st.sidebar.text_input("🔍 Keyword (optional, e.g., stock, IPO, crypto)")
-
-source = st.sidebar.text_input("News Source (optional, e.g., bloomberg, cnbc)")
+source = st.sidebar.text_input("📰 News Source (optional, e.g., bloomberg, cnbc)")
 
 num_articles = st.sidebar.slider("📰 Number of Articles", 1, 20, 5)
 
@@ -50,7 +49,7 @@ from_date = st.sidebar.date_input("From Date", datetime.today() - timedelta(days
 # -------------------------------
 @st.cache_data(ttl=600)
 def fetch_news(category, country, keyword, source, num_articles, from_date, to_date):
-    # Choose endpoint
+    # Determine endpoint based on filters
     endpoint = "top-headlines" if not (keyword or from_date or to_date) else "everything"
     base_url = f"https://newsapi.org/v2/{endpoint}"
 
@@ -60,8 +59,79 @@ def fetch_news(category, country, keyword, source, num_articles, from_date, to_d
         "sortBy": "publishedAt"
     }
 
+    # Add source or country/category (can't use both)
     if source:
         params["sources"] = source
     elif endpoint == "top-headlines":
         params["country"] = country
-        params["categ]()
+        params["category"] = category
+
+    # Add optional filters
+    if keyword:
+        params["q"] = keyword
+
+    if endpoint == "everything":
+        params["from"] = from_date
+        params["to"] = to_date
+
+    try:
+        response = requests.get(base_url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("articles", [])
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error fetching news: {e}")
+        return []
+
+# -------------------------------
+# Display News
+# -------------------------------
+if st.button("Get Financial News"):
+    st.info(f"Fetching {category.title()} news for {country.upper()}...")
+
+    articles = fetch_news(category, country, keyword, source, num_articles, from_date, to_date)
+
+    if not articles:
+        st.warning("No articles found. Try different filters.")
+    else:
+        for idx, article in enumerate(articles, start=1):
+            st.markdown(f"### {idx}. [{article.get('title', 'No Title')}]({article.get('url', '#')})")
+
+            img_url = article.get("urlToImage")
+            if img_url:
+                st.image(img_url, use_container_width=True)
+            else:
+                st.image("https://via.placeholder.com/800x400?text=No+Image", use_container_width=True)
+
+            with st.expander("Read More"):
+                st.write(article.get("description", "No description available."))
+                st.write(article.get("content", "No additional content."))
+
+            st.caption(
+                f"Source: {article.get('source', {}).get('name', 'Unknown')} | "
+                f"Published: {article.get('publishedAt', 'N/A')}"
+            )
+            st.write("---")
+
+# -------------------------------
+# Optional: Show Top Stock & IPO News
+# -------------------------------
+st.sidebar.header("Stocks & IPOs")
+show_stocks = st.sidebar.checkbox("Show Top Stock & IPO News")
+
+if show_stocks:
+    st.subheader("📈 Top Stock & IPO News")
+    stock_keywords = ["stock", "IPO", "market", "finance"]
+
+    for kw in stock_keywords:
+        st.write(f"### 🔎 {kw.title()} News")
+        articles = fetch_news("business", country, kw, None, 3, from_date, to_date)
+
+        for article in articles:
+            st.markdown(f"#### [{article.get('title', 'No Title')}]({article.get('url', '#')})")
+            st.write(article.get("description", "No description available."))
+            st.caption(
+                f"Source: {article.get('source', {}).get('name', 'Unknown')} | "
+                f"Published: {article.get('publishedAt', 'N/A')}"
+            )
+            st.write("---")
