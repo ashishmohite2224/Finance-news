@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-import os
 from datetime import datetime, timedelta
 
 # -------------------------------
@@ -16,38 +15,13 @@ st.title("💹 Financial News & IPO Dashboard")
 st.write("Get the latest financial news, stock updates, IPO info, and more!")
 
 # -------------------------------
-# Load API Key (Flexible & Safe)
+# ✅ Use Your API Key Here
 # -------------------------------
-def get_api_key():
-    """Get NewsAPI key safely from Streamlit secrets, env var, or user input."""
-    key = None
+# ⚠️ Replace the value below with your real NewsAPI key
+API_KEY = "your_real_newsapi_key_here"
 
-    # 1️⃣ Try Streamlit secrets
-    if "NEWS_API_KEY" in st.secrets:
-        key = st.secrets["NEWS_API_KEY"]
-
-    # 2️⃣ Try environment variable
-    elif os.getenv("NEWS_API_KEY"):
-        key = os.getenv("NEWS_API_KEY")
-
-    # 3️⃣ Ask user to input manually
-    else:
-        key = st.text_input(
-            "🔑 Enter your NewsAPI Key",
-            type="password",
-            help="Get a free API key from https://newsapi.org"
-        )
-
-    # Validate key format
-    if not key or len(key.strip()) < 20:
-        st.warning("⚠️ Please enter a valid NewsAPI key to continue.")
-        return None
-
-    return key.strip()
-
-API_KEY = get_api_key()
-
-if not API_KEY:
+if API_KEY == "your_real_newsapi_key_here" or not API_KEY.strip():
+    st.error("⚠️ Missing valid API key. Please update the API_KEY variable in the code.")
     st.stop()
 
 # -------------------------------
@@ -65,7 +39,6 @@ category = st.sidebar.selectbox(
 
 keyword = st.sidebar.text_input("🔍 Keyword (optional, e.g., stock, IPO, crypto)")
 source = st.sidebar.text_input("📰 News Source (optional, e.g., bloomberg, cnbc)")
-
 num_articles = st.sidebar.slider("📰 Number of Articles", 1, 20, 5)
 
 to_date = st.sidebar.date_input("To Date", datetime.today())
@@ -75,13 +48,12 @@ from_date = st.sidebar.date_input("From Date", datetime.today() - timedelta(days
 # Function to Fetch News
 # -------------------------------
 @st.cache_data(ttl=600)
-def fetch_news(category, country, keyword, source, num_articles, from_date, to_date, api_key):
-    """Fetch news articles from NewsAPI safely."""
-    endpoint = "top-headlines" if not (keyword or from_date or to_date) else "everything"
+def fetch_news(category, country, keyword, source, num_articles, from_date, to_date):
+    endpoint = "top-headlines" if not keyword else "everything"
     base_url = f"https://newsapi.org/v2/{endpoint}"
 
     params = {
-        "apiKey": api_key,
+        "apiKey": API_KEY,
         "pageSize": num_articles,
         "sortBy": "publishedAt"
     }
@@ -94,19 +66,16 @@ def fetch_news(category, country, keyword, source, num_articles, from_date, to_d
 
     if keyword:
         params["q"] = keyword
-
-    if endpoint == "everything":
         params["from"] = from_date
         params["to"] = to_date
 
     try:
         response = requests.get(base_url, params=params)
         if response.status_code == 401:
-            st.error("❌ Unauthorized: Invalid or expired API key. Please check your NewsAPI key.")
+            st.error("❌ Unauthorized: Invalid API key. Please check the one in the script.")
             return []
         response.raise_for_status()
-        data = response.json()
-        return data.get("articles", [])
+        return response.json().get("articles", [])
     except requests.exceptions.RequestException as e:
         st.error(f"Error fetching news: {e}")
         return []
@@ -117,7 +86,7 @@ def fetch_news(category, country, keyword, source, num_articles, from_date, to_d
 if st.button("Get Financial News"):
     st.info(f"Fetching {category.title()} news for {country.upper()}...")
 
-    articles = fetch_news(category, country, keyword, source, num_articles, from_date, to_date, API_KEY)
+    articles = fetch_news(category, country, keyword, source, num_articles, from_date, to_date)
 
     if not articles:
         st.warning("No articles found. Try different filters.")
@@ -125,9 +94,8 @@ if st.button("Get Financial News"):
         for idx, article in enumerate(articles, start=1):
             st.markdown(f"### {idx}. [{article.get('title', 'No Title')}]({article.get('url', '#')})")
 
-            img_url = article.get("urlToImage")
-            if img_url:
-                st.image(img_url, use_container_width=True)
+            if article.get("urlToImage"):
+                st.image(article["urlToImage"], use_container_width=True)
             else:
                 st.image("https://via.placeholder.com/800x400?text=No+Image", use_container_width=True)
 
@@ -153,7 +121,7 @@ if show_stocks:
 
     for kw in stock_keywords:
         st.write(f"### 🔎 {kw.title()} News")
-        articles = fetch_news("business", country, kw, None, 3, from_date, to_date, API_KEY)
+        articles = fetch_news("business", country, kw, None, 3, from_date, to_date)
 
         for article in articles:
             st.markdown(f"#### [{article.get('title', 'No Title')}]({article.get('url', '#')})")
