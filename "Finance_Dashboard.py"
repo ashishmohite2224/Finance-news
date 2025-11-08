@@ -9,10 +9,9 @@ from datetime import date, timedelta
 # PAGE CONFIG
 # ==============================
 st.set_page_config(
-    page_title="Finance Dashboard",
-    page_icon="💹",
+    page_title="Finance Dashboard 💹",
+    page_icon="💰",
     layout="wide",
-    initial_sidebar_state="expanded"
 )
 
 # ==============================
@@ -20,18 +19,12 @@ st.set_page_config(
 # ==============================
 st.markdown("""
     <style>
-        body {
+        body, .stApp {
             background-color: #0e1117;
             color: #fafafa;
         }
-        .stApp {
+        .css-18e3th9, .css-1d391kg {
             background-color: #0e1117;
-        }
-        .css-18e3th9 {
-            background-color: #0e1117;
-        }
-        .stMarkdown, .stText, .stHeader, .stDataFrame {
-            color: #fafafa;
         }
         .stButton>button {
             background-color: #007bff;
@@ -42,14 +35,18 @@ st.markdown("""
         .stButton>button:hover {
             background-color: #0056b3;
         }
+        .stMetric {
+            background-color: #1a1d23;
+            border-radius: 10px;
+            padding: 15px;
+        }
     </style>
 """, unsafe_allow_html=True)
 
 # ==============================
 # SIDEBAR SETTINGS
 # ==============================
-st.sidebar.header("📈 Stock Dashboard Settings")
-
+st.sidebar.header("⚙️ Dashboard Controls")
 ticker = st.sidebar.text_input("Enter Stock Symbol", value="AAPL").upper()
 start_date = st.sidebar.date_input("Start Date", date.today() - timedelta(days=365))
 end_date = st.sidebar.date_input("End Date", date.today())
@@ -70,13 +67,13 @@ if data.empty:
     st.stop()
 
 # ==============================
-# DASHBOARD HEADER
+# HEADER
 # ==============================
 st.title("💹 Finance Dashboard")
 st.markdown(f"### Stock Analysis for **{ticker}**")
 
 # ==============================
-# PRICE CHART (PLOTLY)
+# CANDLESTICK CHART
 # ==============================
 fig = go.Figure()
 fig.add_trace(go.Candlestick(
@@ -85,7 +82,7 @@ fig.add_trace(go.Candlestick(
     high=data['High'],
     low=data['Low'],
     close=data['Close'],
-    name='Candlestick'
+    name="Candlestick"
 ))
 fig.update_layout(
     template="plotly_dark",
@@ -97,7 +94,7 @@ fig.update_layout(
 st.plotly_chart(fig, use_container_width=True)
 
 # ==============================
-# TECHNICAL INDICATORS
+# MOVING AVERAGES (MATPLOTLIB)
 # ==============================
 st.subheader("📊 Technical Indicators")
 
@@ -112,7 +109,7 @@ ax.set_facecolor('#0e1117')
 ax.legend()
 ax.grid(True, color='#333333')
 ax.set_xlabel("Date")
-ax.set_ylabel("Price")
+ax.set_ylabel("Price (USD)")
 st.pyplot(fig2)
 
 # ==============================
@@ -129,7 +126,70 @@ with col3:
     st.metric("52 Week Low", f"${data['Low'].min():.2f}")
 
 # ==============================
-# DATAFRAME DISPLAY
+# PORTFOLIO TRACKER
 # ==============================
-st.subheader("📅 Stock Data Table")
-st.dataframe(data.tail(10))
+st.subheader("💼 Portfolio Tracker")
+
+portfolio = st.session_state.get("portfolio", {})
+
+col_add1, col_add2, col_add3 = st.columns([3, 2, 1])
+with col_add1:
+    new_symbol = st.text_input("Add Stock Symbol (e.g., MSFT)").upper()
+with col_add2:
+    quantity = st.number_input("Quantity", min_value=0, value=0)
+with col_add3:
+    add_button = st.button("➕ Add to Portfolio")
+
+if add_button and new_symbol and quantity > 0:
+    stock = yf.Ticker(new_symbol)
+    price = stock.history(period="1d")['Close'].iloc[-1]
+    portfolio[new_symbol] = {"Quantity": quantity, "Price": price}
+    st.session_state["portfolio"] = portfolio
+    st.success(f"✅ {new_symbol} added to portfolio!")
+
+if portfolio:
+    portfolio_df = pd.DataFrame(portfolio).T
+    portfolio_df["Total Value"] = portfolio_df["Quantity"] * portfolio_df["Price"]
+    total_value = portfolio_df["Total Value"].sum()
+    st.write(portfolio_df)
+    st.metric("💰 Portfolio Total Value", f"${total_value:,.2f}")
+else:
+    st.info("Your portfolio is empty. Add some stocks above.")
+
+# ==============================
+# TOP GAINERS / LOSERS (NSE)
+# ==============================
+st.subheader("📈 Market Overview (NSE Top Gainers & Losers)")
+
+@st.cache_data
+def get_nse_data():
+    try:
+        url = "https://www1.nseindia.com/live_market/dynaContent/live_watch/stock_watch/niftyStockWatch.json"
+        df = pd.read_json(url)
+        return df
+    except:
+        return pd.DataFrame()
+
+market_data = get_nse_data()
+if market_data.empty:
+    st.info("Live NSE data not available right now.")
+else:
+    top_gainers = market_data.sort_values(by='ltpChange', ascending=False).head(5)
+    top_losers = market_data.sort_values(by='ltpChange').head(5)
+
+    col_g, col_l = st.columns(2)
+    with col_g:
+        st.write("### 🟢 Top Gainers")
+        st.dataframe(top_gainers)
+    with col_l:
+        st.write("### 🔴 Top Losers")
+        st.dataframe(top_losers)
+
+# ==============================
+# FOOTER
+# ==============================
+st.markdown("---")
+st.markdown(
+    "<center>💼 Built with ❤️ using Streamlit | © 2025 Finance Dashboard</center>",
+    unsafe_allow_html=True
+)
