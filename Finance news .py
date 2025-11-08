@@ -1,264 +1,337 @@
+# app.py
 import streamlit as st
-import requests
 import yfinance as yf
 import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
 from textblob import TextBlob
+from datetime import datetime, timedelta
 
-# ==============================
-# PAGE CONFIG
-# ==============================
-st.set_page_config(
-    page_title="📊 Indian Market Dashboard",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+# ---------------------------
+# Page config & CSS (dark)
+# ---------------------------
+st.set_page_config(page_title="Finance Dashboard — Dark", layout="wide", initial_sidebar_state="expanded")
 
-# ==============================
-# CUSTOM GREEN-BLUE THEME
-# ==============================
-st.markdown("""
+# Dark theme CSS
+st.markdown(
+    """
     <style>
-        [data-testid="stAppViewContainer"] {
-            background: linear-gradient(135deg, #013A63 0%, #026C7C 50%, #019267 100%);
-            color: #EAF6F4;
-        }
-        [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #012C3D 0%, #013A63 100%);
-            color: #EAF6F4;
-        }
-        h1, h2, h3, h4 {
-            color: #2EF2B6;
-            font-weight: 700;
-        }
-        .stButton>button {
-            background-color: #00DFA2 !important;
-            color: #012B39 !important;
-            border-radius: 8px;
-            font-weight: 700;
-            transition: 0.3s;
-        }
-        .stButton>button:hover {
-            background-color: #38E4B7 !important;
-            transform: scale(1.05);
-        }
-        .card {
-            background: rgba(255,255,255,0.05);
-            border-radius: 12px;
-            padding: 18px;
-            margin-bottom: 16px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-        }
-        [data-testid="stMetricValue"] { color: #00DFA2; font-weight: 700; }
-        [data-testid="stMetricLabel"] { color: #EAF6F4; }
+    :root {
+        --bg: #0b0f12;
+        --card: #0f1720;
+        --muted: #9aa6b2;
+        --accent: #00b894;
+        --accent-2: #3b82f6;
+        --white: #e6eef6;
+    }
+    html, body, [class*="css"]  {
+        background-color: var(--bg) !important;
+        color: var(--white) !important;
+    }
+    .stApp {
+        background-color: var(--bg) !important;
+    }
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 2rem;
+    }
+    .card {
+        background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+        border: 1px solid rgba(255,255,255,0.03);
+        padding: 16px;
+        border-radius: 10px;
+        box-shadow: 0 6px 18px rgba(2,6,23,0.6);
+    }
+    .section-title {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+    .small-muted {
+        color: var(--muted);
+        font-size: 13px;
+    }
+    .stButton>button {
+        background-color: var(--accent) !important;
+        color: black !important;
+        font-weight: 600;
+    }
+    .stTextInput>div>input, .stNumberInput>div>input, .stSelectbox>div>div>div>input {
+        background-color: transparent !important;
+        border: 1px solid rgba(255,255,255,0.06) !important;
+        color: var(--white) !important;
+    }
     </style>
-""", unsafe_allow_html=True)
-
-# ==============================
-# API KEY
-# ==============================
-NEWS_API_KEY = "pub_0c5f15ab4f13424cbbad70c0c7fe1207"
-
-# ==============================
-# FUNCTIONS
-# ==============================
-@st.cache_data(ttl=1800)
-def fetch_nse_data():
-    url = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%2050"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        res = requests.get(url, headers=headers, timeout=10)
-        res.raise_for_status()
-        df = pd.DataFrame(res.json().get("data", []))
-        if "symbol" in df.columns:
-            return df[["symbol", "lastPrice", "pChange"]]
-        return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
-
-@st.cache_data(ttl=600)
-def fetch_market_news(num_articles=8):
-    """Fetch latest Indian market-related news."""
-    try:
-        url = f"https://newsdata.io/api/1/news?country=in&category=business,markets&language=en&apikey={NEWS_API_KEY}"
-        res = requests.get(url, timeout=10)
-        res.raise_for_status()
-        data = res.json()
-        return data.get("results", [])[:num_articles]
-    except Exception as e:
-        print("Error fetching news:", e)
-        return []
-
-def get_stock_data(symbol, period="1mo"):
-    try:
-        df = yf.Ticker(symbol).history(period=period)
-        return df
-    except Exception:
-        return pd.DataFrame()
-
-def sentiment_label(text):
-    score = TextBlob(text).sentiment.polarity
-    if score > 0.1:
-        return "🟢 Positive"
-    elif score < -0.1:
-        return "🔴 Negative"
-    else:
-        return "⚪ Neutral"
-
-# ==============================
-# SIDEBAR NAVIGATION
-# ==============================
-st.sidebar.title("📍 Navigation")
-page = st.sidebar.radio(
-    "Go to",
-    (
-        "🏠 Dashboard",
-        "🔎 Stock Search",
-        "🚀 Top Movers",
-        "📰 Latest News",
-        "💬 Sentiment",
-        "ℹ️ About",
-    ),
+    """,
+    unsafe_allow_html=True,
 )
 
-# ==============================
-# 🏠 DASHBOARD
-# ==============================
-if page == "🏠 Dashboard":
-    st.header("📊 Indian Market Overview")
-
-    col1, col2, col3 = st.columns([1.2, 1.2, 1.6])
-
-    nifty = get_stock_data("^NSEI", "1mo")
-    sensex = get_stock_data("^BSESN", "1mo")
-
-    with col1:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.subheader("📈 NIFTY 50")
-        if not nifty.empty:
-            start, end = nifty["Close"].iloc[0], nifty["Close"].iloc[-1]
-            growth = ((end - start) / start) * 100
-            st.metric("Value", f"₹{end:,.2f}", delta=f"{growth:.2f}%")
-            st.line_chart(nifty["Close"], height=160)
-        else:
-            st.warning("NIFTY data unavailable.")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col2:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.subheader("📉 SENSEX")
-        if not sensex.empty:
-            start, end = sensex["Close"].iloc[0], sensex["Close"].iloc[-1]
-            growth = ((end - start) / start) * 100
-            st.metric("Value", f"₹{end:,.2f}", delta=f"{growth:.2f}%")
-            st.line_chart(sensex["Close"], height=160)
-        else:
-            st.warning("SENSEX data unavailable.")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col3:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.subheader("📰 Latest Market News")
-        news = fetch_market_news(5)
-        if news:
-            for n in news:
-                st.markdown(f"- **[{n.get('title','No title')}]({n.get('link','#')})**")
-        else:
-            st.info("No market news available. Try again later.")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.subheader("📄 NSE Sample Data")
-    df = fetch_nse_data()
-    if not df.empty:
-        df["pChange"] = pd.to_numeric(df["pChange"], errors="coerce").round(2)
-        st.dataframe(df.head(25), use_container_width=True)
-    else:
-        st.info("NSE data currently unavailable.")
-
-# ==============================
-# 🔎 STOCK SEARCH
-# ==============================
-elif page == "🔎 Stock Search":
-    st.header("🔎 Stock Search")
-    symbol = st.text_input("Enter NSE Symbol (e.g., RELIANCE.NS, TCS.NS)", "RELIANCE.NS")
-    period = st.selectbox("Select Timeframe", ["5d", "1mo", "3mo", "6mo", "1y"], index=1)
-    if st.button("Show Data"):
-        data = get_stock_data(symbol, period)
+# ---------------------------
+# Utilities: TA functions
+# ---------------------------
+def fetch_data(ticker, period="6mo", interval="1d"):
+    try:
+        data = yf.download(ticker, period=period, interval=interval, threads=False)
         if data.empty:
-            st.error("Stock data not found.")
-        else:
-            start, end = data["Close"].iloc[0], data["Close"].iloc[-1]
-            growth = ((end - start) / start) * 100
-            st.metric("Growth", f"{growth:.2f}%")
-            st.line_chart(data["Close"], height=350)
-            st.dataframe(data.tail(), use_container_width=True)
+            return None
+        data = data.dropna()
+        return data
+    except Exception as e:
+        st.error(f"Error fetching data for {ticker}: {e}")
+        return None
 
-# ==============================
-# 🚀 TOP MOVERS
-# ==============================
-elif page == "🚀 Top Movers":
-    st.header("🚀 Top Gainers & Losers (NSE)")
-    df = fetch_nse_data()
-    if df.empty:
-        st.info("NSE data unavailable.")
+def sma(series, period):
+    return series.rolling(period).mean()
+
+def ema(series, period):
+    return series.ewm(span=period, adjust=False).mean()
+
+def rsi(series, period=14):
+    delta = series.diff()
+    up = delta.clip(lower=0)
+    down = -1 * delta.clip(upper=0)
+    ma_up = up.rolling(window=period, min_periods=period).mean()
+    ma_down = down.rolling(window=period, min_periods=period).mean()
+    rs = ma_up / ma_down
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+# ---------------------------
+# Sidebar controls
+# ---------------------------
+st.sidebar.title("Controls")
+st.sidebar.markdown("**Search stock** (Yahoo ticker like AAPL, MSFT, TCS.NS, INFY.NS)")
+
+ticker = st.sidebar.text_input("Ticker", value="AAPL")
+range_days = st.sidebar.selectbox("Chart range", options=["1mo", "3mo", "6mo", "1y", "2y", "5y"], index=2)
+interval = st.sidebar.selectbox("Interval", options=["1d", "1wk", "1h"], index=0)
+show_ma = st.sidebar.checkbox("Show Moving Averages (SMA/EMA)", value=True)
+show_rsi = st.sidebar.checkbox("Show RSI", value=True)
+
+# Portfolio controls in sidebar
+st.sidebar.markdown("---")
+st.sidebar.subheader("Portfolio (local)")
+with st.sidebar.form("add_trade"):
+    st.write("Add / Update position")
+    p_ticker = st.text_input("Ticker to add", value="")
+    p_shares = st.number_input("Shares", min_value=0.0, format="%.4f", value=0.0)
+    p_price = st.number_input("Buy price (per share)", min_value=0.0, format="%.4f", value=0.0)
+    submitted = st.form_submit_button("Add Position")
+    if submitted:
+        if p_ticker.strip() == "" or p_shares <= 0:
+            st.sidebar.error("Enter ticker and shares > 0")
+        else:
+            if "portfolio" not in st.session_state:
+                st.session_state.portfolio = []
+            st.session_state.portfolio.append({
+                "ticker": p_ticker.upper(),
+                "shares": float(p_shares),
+                "buy_price": float(p_price),
+                "added_at": datetime.utcnow().isoformat()
+            })
+            st.sidebar.success(f"Added {p_shares} of {p_ticker.upper()}")
+
+# initialize portfolio if absent
+if "portfolio" not in st.session_state:
+    st.session_state.portfolio = []
+
+# ---------------------------
+# Main layout
+# ---------------------------
+st.title("Finance Dashboard")
+st.markdown("<div class='small-muted'>Dark professional dashboard • no news • portfolio, charts, indicators, sentiment</div>", unsafe_allow_html=True)
+st.write("")  # spacing
+
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-title'>Price & Technicals</div>", unsafe_allow_html=True)
+
+    data = fetch_data(ticker, period=range_days, interval=interval)
+    if data is None:
+        st.error("No data found for ticker. Please check the ticker symbol.")
     else:
-        df["pChange"] = pd.to_numeric(df["pChange"], errors="coerce")
-        gainers = df.sort_values("pChange", ascending=False).head(10)
-        losers = df.sort_values("pChange", ascending=True).head(10)
-        c1, c2 = st.columns(2)
-        with c1:
-            st.subheader("🏆 Top Gainers")
-            st.dataframe(gainers, use_container_width=True)
-        with c2:
-            st.subheader("📉 Top Losers")
-            st.dataframe(losers, use_container_width=True)
+        # summary
+        last_close = data["Close"].iloc[-1]
+        prev_close = data["Close"].iloc[-2] if len(data) > 1 else last_close
+        change = last_close - prev_close
+        change_pct = (change / prev_close) * 100 if prev_close else 0.0
 
-# ==============================
-# 📰 LATEST NEWS
-# ==============================
-elif page == "📰 Latest News":
-    st.header("📰 Latest Market & Business News (India)")
-    num = st.slider("Number of Articles", 3, 12, 6)
-    if st.button("Load News"):
-        articles = fetch_market_news(num)
-        if not articles:
-            st.warning("No news available. Try again later.")
-        for i, art in enumerate(articles, start=1):
-            st.markdown(f"### {i}. [{art.get('title')}]({art.get('link')})")
-            if art.get("image_url"):
-                st.image(art["image_url"], use_column_width=True)
-            st.caption(f"{art.get('source_id','')} | {art.get('pubDate','')}")
-            st.write(art.get("description", ""))
-            st.write("---")
+        st.markdown(f"**{ticker.upper()}** • Last close: **{last_close:.2f}**  •  Change: **{change:.2f} ({change_pct:.2f}%)**")
+        st.markdown("<hr/>", unsafe_allow_html=True)
 
-# ==============================
-# 💬 SENTIMENT
-# ==============================
-elif page == "💬 Sentiment":
-    st.header("💬 Market News Sentiment")
-    if st.button("Analyze"):
-        articles = fetch_market_news(8)
-        if not articles:
-            st.info("No news found.")
+        # Calculate indicators
+        if show_ma:
+            data["SMA20"] = sma(data["Close"], 20)
+            data["SMA50"] = sma(data["Close"], 50)
+            data["EMA20"] = ema(data["Close"], 20)
+
+        if show_rsi:
+            data["RSI14"] = rsi(data["Close"], 14)
+
+        # Candlestick + MA
+        fig = go.Figure()
+        fig.add_trace(go.Candlestick(
+            x=data.index,
+            open=data["Open"],
+            high=data["High"],
+            low=data["Low"],
+            close=data["Close"],
+            name="Price",
+            increasing_line_color="#00b894",
+            decreasing_line_color="#ff7675",
+            showlegend=False,
+        ))
+
+        if show_ma:
+            if "SMA20" in data.columns:
+                fig.add_trace(go.Scatter(x=data.index, y=data["SMA20"], mode="lines", name="SMA20", line=dict(width=1.2, dash="dash")))
+            if "SMA50" in data.columns:
+                fig.add_trace(go.Scatter(x=data.index, y=data["SMA50"], mode="lines", name="SMA50", line=dict(width=1.2)))
+            if "EMA20" in data.columns:
+                fig.add_trace(go.Scatter(x=data.index, y=data["EMA20"], mode="lines", name="EMA20", line=dict(width=1.2, dash="dot")))
+
+        fig.update_layout(
+            template="plotly_dark",
+            margin=dict(l=0, r=0, t=20, b=0),
+            title_text="Price Chart",
+            xaxis_rangeslider_visible=False,
+            height=420
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # RSI Plot
+        if show_rsi and "RSI14" in data.columns:
+            rsi_fig = go.Figure()
+            rsi_fig.add_trace(go.Scatter(x=data.index, y=data["RSI14"], name="RSI14"))
+            rsi_fig.update_layout(
+                template="plotly_dark",
+                margin=dict(l=0, r=0, t=10, b=0),
+                height=200,
+                yaxis=dict(range=[0, 100])
+            )
+            rsi_fig.add_hline(y=70, line=dict(color="red", dash="dash"))
+            rsi_fig.add_hline(y=30, line=dict(color="green", dash="dash"))
+            st.plotly_chart(rsi_fig, use_container_width=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Sentiment Analyzer card
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-title'>Sentiment Analyzer</div>", unsafe_allow_html=True)
+    txt = st.text_area("Paste text or type your trade thesis / news excerpt", height=120)
+    if st.button("Analyze Sentiment"):
+        if not txt.strip():
+            st.warning("Enter some text to analyze.")
         else:
-            for a in articles:
-                title = a.get("title", "")
-                sentiment = sentiment_label(title)
-                st.markdown(f"- {sentiment}: {title}")
+            blob = TextBlob(txt)
+            polarity = blob.sentiment.polarity  # -1 to 1
+            subjectivity = blob.sentiment.subjectivity  # 0 to 1
+            st.metric("Polarity (-1 to 1)", f"{polarity:.3f}")
+            st.metric("Subjectivity (0-1)", f"{subjectivity:.3f}")
+            if polarity > 0.1:
+                st.success("Overall Positive tone")
+            elif polarity < -0.1:
+                st.error("Overall Negative tone")
+            else:
+                st.info("Neutral / mixed tone")
+            st.markdown("---")
+            st.write("**Quick tips:** Polarity >0 = positive, <0 = negative. Subjectivity near 1 => opinionated; near 0 => factual.")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-# ==============================
-# ℹ️ ABOUT
-# ==============================
-else:
-    st.header("ℹ️ About")
-    st.markdown("""
-    ### Indian Market Dashboard  
-    **Features:**  
-    - Live NIFTY / SENSEX charts  
-    - Stock search with % growth  
-    - Top Gainers & Losers  
-    - Market-related business news  
-    - Sentiment Analysis  
-    - Blue-Green professional theme  
-    """)
+with col2:
+    # Portfolio card
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-title'>Portfolio Overview</div>", unsafe_allow_html=True)
+
+    if len(st.session_state.portfolio) == 0:
+        st.info("Your portfolio is empty. Use the sidebar form to add positions.")
+    else:
+        # Build a DataFrame with live prices
+        port_df = pd.DataFrame(st.session_state.portfolio)
+        unique_tickers = port_df['ticker'].unique().tolist()
+
+        # Fetch latest prices in a batch
+        prices = {}
+        for t in unique_tickers:
+            try:
+                q = yf.Ticker(t)
+                hist = q.history(period="1d")
+                if not hist.empty:
+                    prices[t] = hist['Close'].iloc[-1]
+                else:
+                    # fallback: try fast info
+                    info = q.info
+                    prices[t] = info.get("previousClose", np.nan)
+            except Exception:
+                prices[t] = np.nan
+
+        # compute metrics
+        port_df["current_price"] = port_df["ticker"].apply(lambda x: prices.get(x, np.nan))
+        port_df["market_value"] = port_df["current_price"] * port_df["shares"]
+        port_df["cost_basis"] = port_df["buy_price"] * port_df["shares"]
+        port_df["pl_abs"] = port_df["market_value"] - port_df["cost_basis"]
+        port_df["pl_pct"] = np.where(port_df["cost_basis"] != 0, (port_df["pl_abs"] / port_df["cost_basis"]) * 100, 0.0)
+
+        total_mv = port_df["market_value"].sum()
+        total_cost = port_df["cost_basis"].sum()
+        total_pl = total_mv - total_cost
+        total_pl_pct = (total_pl / total_cost) * 100 if total_cost != 0 else 0.0
+
+        st.metric("Total Market Value", f"${total_mv:,.2f}")
+        st.metric("Total P/L", f"${total_pl:,.2f} ({total_pl_pct:.2f}%)")
+
+        st.dataframe(port_df[["ticker", "shares", "buy_price", "current_price", "market_value", "pl_abs", "pl_pct"]].sort_values(by="market_value", ascending=False).reset_index(drop=True))
+
+        # Allow removing an entry
+        st.markdown("---")
+        st.write("Manage positions")
+        idx_to_remove = st.selectbox("Select position to remove", options=[""] + [f"{i} | {row['ticker']} | {row['shares']} sh" for i, row in port_df.reset_index().iterrows()])
+        if st.button("Remove selected"):
+            if idx_to_remove:
+                idx = int(idx_to_remove.split("|")[0].strip())
+                try:
+                    del st.session_state.portfolio[idx]
+                    st.success("Removed position.")
+                    st.experimental_rerun()
+                except Exception as e:
+                    st.error("Could not remove: " + str(e))
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Quick ticker lookup card
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<div class='section-title'>Quick Lookup</div>", unsafe_allow_html=True)
+    if data is not None:
+        st.write(f"Last 5 rows for **{ticker.upper()}**")
+        st.dataframe(data.tail(5)[["Open", "High", "Low", "Close", "Volume"]])
+    else:
+        st.write("No data to show.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# Footer / About
+st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+st.markdown(
+    """
+    <div class='card'>
+    <div style='display:flex; justify-content:space-between; align-items:center;'>
+      <div>
+        <strong>Finance Dashboard</strong> &nbsp; • &nbsp; Dark professional theme<br/>
+        <span class='small-muted'>Built with Streamlit • Data: yfinance</span>
+      </div>
+      <div style='text-align:right;'>
+        <span class='small-muted'>Tip:</span> Use tickers like <code>AAPL</code>, <code>MSFT</code>, or Indian tickers like <code>TCS.NS</code> / <code>INFY.NS</code>.
+      </div>
+    </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ---------------------------
+# End of file
+# ---------------------------
