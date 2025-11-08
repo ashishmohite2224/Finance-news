@@ -1,18 +1,37 @@
 # app.py
+"""
+Streamlit Finance Dashboard (dark theme)
+- Robust imports: uses plotly if available, else mplfinance, else matplotlib fallback.
+- Portfolio tracker (session), technicals (SMA/EMA/RSI), sentiment (TextBlob).
+Save as app.py and run: streamlit run app.py
+If you want advanced candlesticks install: pip install plotly mplfinance
+"""
+
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
+from datetime import datetime
 from textblob import TextBlob
-from datetime import datetime, timedelta
+
+# Try optional plotting libs
+_HAS_PLOTLY = False
+_HAS_MPLFINANCE = False
+try:
+    import plotly.graph_objects as go
+    _HAS_PLOTLY = True
+except Exception:
+    try:
+        import mplfinance as mpf
+        _HAS_MPLFINANCE = True
+    except Exception:
+        import matplotlib.pyplot as plt
 
 # ---------------------------
 # Page config & CSS (dark)
 # ---------------------------
 st.set_page_config(page_title="Finance Dashboard — Dark", layout="wide", initial_sidebar_state="expanded")
 
-# Dark theme CSS
 st.markdown(
     """
     <style>
@@ -72,7 +91,7 @@ st.markdown(
 def fetch_data(ticker, period="6mo", interval="1d"):
     try:
         data = yf.download(ticker, period=period, interval=interval, threads=False)
-        if data.empty:
+        if data is None or data.empty:
             return None
         data = data.dropna()
         return data
@@ -112,7 +131,6 @@ show_rsi = st.sidebar.checkbox("Show RSI", value=True)
 st.sidebar.markdown("---")
 st.sidebar.subheader("Portfolio (local)")
 with st.sidebar.form("add_trade"):
-    st.write("Add / Update position")
     p_ticker = st.text_input("Ticker to add", value="")
     p_shares = st.number_input("Shares", min_value=0.0, format="%.4f", value=0.0)
     p_price = st.number_input("Buy price (per share)", min_value=0.0, format="%.4f", value=0.0)
@@ -131,7 +149,6 @@ with st.sidebar.form("add_trade"):
             })
             st.sidebar.success(f"Added {p_shares} of {p_ticker.upper()}")
 
-# initialize portfolio if absent
 if "portfolio" not in st.session_state:
     st.session_state.portfolio = []
 
@@ -140,7 +157,7 @@ if "portfolio" not in st.session_state:
 # ---------------------------
 st.title("Finance Dashboard")
 st.markdown("<div class='small-muted'>Dark professional dashboard • no news • portfolio, charts, indicators, sentiment</div>", unsafe_allow_html=True)
-st.write("")  # spacing
+st.write("")
 
 col1, col2 = st.columns([2, 1])
 
@@ -152,7 +169,6 @@ with col1:
     if data is None:
         st.error("No data found for ticker. Please check the ticker symbol.")
     else:
-        # summary
         last_close = data["Close"].iloc[-1]
         prev_close = data["Close"].iloc[-2] if len(data) > 1 else last_close
         change = last_close - prev_close
@@ -161,64 +177,97 @@ with col1:
         st.markdown(f"**{ticker.upper()}** • Last close: **{last_close:.2f}**  •  Change: **{change:.2f} ({change_pct:.2f}%)**")
         st.markdown("<hr/>", unsafe_allow_html=True)
 
-        # Calculate indicators
+        # Indicators
         if show_ma:
             data["SMA20"] = sma(data["Close"], 20)
             data["SMA50"] = sma(data["Close"], 50)
             data["EMA20"] = ema(data["Close"], 20)
-
         if show_rsi:
             data["RSI14"] = rsi(data["Close"], 14)
 
-        # Candlestick + MA
-        fig = go.Figure()
-        fig.add_trace(go.Candlestick(
-            x=data.index,
-            open=data["Open"],
-            high=data["High"],
-            low=data["Low"],
-            close=data["Close"],
-            name="Price",
-            increasing_line_color="#00b894",
-            decreasing_line_color="#ff7675",
-            showlegend=False,
-        ))
+        # Plot: prefer plotly candlestick if available
+        if _HAS_PLOTLY:
+            fig = go.Figure()
+            fig.add_trace(go.Candlestick(
+                x=data.index,
+                open=data["Open"],
+                high=data["High"],
+                low=data["Low"],
+                close=data["Close"],
+                name="Price",
+                increasing_line_color="#00b894",
+                decreasing_line_color="#ff7675",
+                showlegend=False,
+            ))
+            if show_ma:
+                if "SMA20" in data.columns:
+                    fig.add_trace(go.Scatter(x=data.index, y=data["SMA20"], mode="lines", name="SMA20", line=dict(width=1.2, dash="dash")))
+                if "SMA50" in data.columns:
+                    fig.add_trace(go.Scatter(x=data.index, y=data["SMA50"], mode="lines", name="SMA50", line=dict(width=1.2)))
+                if "EMA20" in data.columns:
+                    fig.add_trace(go.Scatter(x=data.index, y=data["EMA20"], mode="lines", name="EMA20", line=dict(width=1.2, dash="dot")))
+            fig.update_layout(template="plotly_dark", margin=dict(l=0, r=0, t=20, b=0), xaxis_rangeslider_visible=False, height=420)
+            st.plotly_chart(fig, use_container_width=True)
 
-        if show_ma:
-            if "SMA20" in data.columns:
-                fig.add_trace(go.Scatter(x=data.index, y=data["SMA20"], mode="lines", name="SMA20", line=dict(width=1.2, dash="dash")))
-            if "SMA50" in data.columns:
-                fig.add_trace(go.Scatter(x=data.index, y=data["SMA50"], mode="lines", name="SMA50", line=dict(width=1.2)))
-            if "EMA20" in data.columns:
-                fig.add_trace(go.Scatter(x=data.index, y=data["EMA20"], mode="lines", name="EMA20", line=dict(width=1.2, dash="dot")))
+        elif _HAS_MPLFINANCE:
+            # mplfinance candlestick
+            mpf_style = mpf.make_mpf_style(base_mpf_style='nightclouds', rc={'font.size':10})
+            mpf.plot(data, type='candle', mav=(20,50), volume=False, style=mpf_style, figsize=(9,4), tight_layout=True, show_nontrading=False, block=False)
+            # mplfinance displays directly in notebook; streamlit will show the matplotlib figure
+            import matplotlib.pyplot as plt
+            fig = plt.gcf()
+            st.pyplot(fig)
 
-        fig.update_layout(
-            template="plotly_dark",
-            margin=dict(l=0, r=0, t=20, b=0),
-            title_text="Price Chart",
-            xaxis_rangeslider_visible=False,
-            height=420
-        )
+        else:
+            # Matplotlib fallback: line chart for Close + MAs
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots(figsize=(10, 4), tight_layout=True)
+            ax.plot(data.index, data["Close"], label="Close", linewidth=1.1)
+            if show_ma:
+                if "SMA20" in data.columns:
+                    ax.plot(data.index, data["SMA20"], label="SMA20", linewidth=0.9, linestyle="--")
+                if "SMA50" in data.columns:
+                    ax.plot(data.index, data["SMA50"], label="SMA50", linewidth=0.9)
+                if "EMA20" in data.columns:
+                    ax.plot(data.index, data["EMA20"], label="EMA20", linewidth=0.9, linestyle=":")
+            ax.set_title("Price (Close)")
+            ax.grid(alpha=0.15)
+            ax.legend(loc="upper left", fontsize="small")
+            # dark theme adjustments for matplotlib
+            ax.set_facecolor("#0f1720")
+            fig.patch.set_facecolor("#0b0f12")
+            for spine in ax.spines.values():
+                spine.set_color("#2b3440")
+            ax.tick_params(colors="#e6eef6")
+            st.pyplot(fig)
 
-        st.plotly_chart(fig, use_container_width=True)
-
-        # RSI Plot
+        # RSI plot (matplotlib or plotly)
         if show_rsi and "RSI14" in data.columns:
-            rsi_fig = go.Figure()
-            rsi_fig.add_trace(go.Scatter(x=data.index, y=data["RSI14"], name="RSI14"))
-            rsi_fig.update_layout(
-                template="plotly_dark",
-                margin=dict(l=0, r=0, t=10, b=0),
-                height=200,
-                yaxis=dict(range=[0, 100])
-            )
-            rsi_fig.add_hline(y=70, line=dict(color="red", dash="dash"))
-            rsi_fig.add_hline(y=30, line=dict(color="green", dash="dash"))
-            st.plotly_chart(rsi_fig, use_container_width=True)
+            if _HAS_PLOTLY:
+                rsi_fig = go.Figure()
+                rsi_fig.add_trace(go.Scatter(x=data.index, y=data["RSI14"], name="RSI14"))
+                rsi_fig.update_layout(template="plotly_dark", margin=dict(l=0, r=0, t=10, b=0), height=200, yaxis=dict(range=[0, 100]))
+                rsi_fig.add_hline(y=70, line=dict(color="red", dash="dash"))
+                rsi_fig.add_hline(y=30, line=dict(color="green", dash="dash"))
+                st.plotly_chart(rsi_fig, use_container_width=True)
+            else:
+                import matplotlib.pyplot as plt
+                fig2, ax2 = plt.subplots(figsize=(10, 2.5), tight_layout=True)
+                ax2.plot(data.index, data["RSI14"], linewidth=1.0)
+                ax2.axhline(70, color='r', linestyle='--', linewidth=0.8)
+                ax2.axhline(30, color='g', linestyle='--', linewidth=0.8)
+                ax2.set_ylim(0, 100)
+                ax2.set_title("RSI (14)")
+                ax2.set_facecolor("#0f1720")
+                fig2.patch.set_facecolor("#0b0f12")
+                ax2.tick_params(colors="#e6eef6")
+                for spine in ax2.spines.values():
+                    spine.set_color("#2b3440")
+                st.pyplot(fig2)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Sentiment Analyzer card
+    # Sentiment Analyzer
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Sentiment Analyzer</div>", unsafe_allow_html=True)
@@ -243,18 +292,14 @@ with col1:
     st.markdown("</div>", unsafe_allow_html=True)
 
 with col2:
-    # Portfolio card
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Portfolio Overview</div>", unsafe_allow_html=True)
 
     if len(st.session_state.portfolio) == 0:
         st.info("Your portfolio is empty. Use the sidebar form to add positions.")
     else:
-        # Build a DataFrame with live prices
         port_df = pd.DataFrame(st.session_state.portfolio)
         unique_tickers = port_df['ticker'].unique().tolist()
-
-        # Fetch latest prices in a batch
         prices = {}
         for t in unique_tickers:
             try:
@@ -263,13 +308,11 @@ with col2:
                 if not hist.empty:
                     prices[t] = hist['Close'].iloc[-1]
                 else:
-                    # fallback: try fast info
                     info = q.info
                     prices[t] = info.get("previousClose", np.nan)
             except Exception:
                 prices[t] = np.nan
 
-        # compute metrics
         port_df["current_price"] = port_df["ticker"].apply(lambda x: prices.get(x, np.nan))
         port_df["market_value"] = port_df["current_price"] * port_df["shares"]
         port_df["cost_basis"] = port_df["buy_price"] * port_df["shares"]
@@ -286,7 +329,6 @@ with col2:
 
         st.dataframe(port_df[["ticker", "shares", "buy_price", "current_price", "market_value", "pl_abs", "pl_pct"]].sort_values(by="market_value", ascending=False).reset_index(drop=True))
 
-        # Allow removing an entry
         st.markdown("---")
         st.write("Manage positions")
         idx_to_remove = st.selectbox("Select position to remove", options=[""] + [f"{i} | {row['ticker']} | {row['shares']} sh" for i, row in port_df.reset_index().iterrows()])
@@ -302,7 +344,6 @@ with col2:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Quick ticker lookup card
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>Quick Lookup</div>", unsafe_allow_html=True)
@@ -313,7 +354,6 @@ with col2:
         st.write("No data to show.")
     st.markdown("</div>", unsafe_allow_html=True)
 
-# Footer / About
 st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
 st.markdown(
     """
@@ -331,7 +371,3 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-# ---------------------------
-# End of file
-# ---------------------------
